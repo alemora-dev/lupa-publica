@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lupa Pública | SECOP Analytics</title>
+    <!-- Modern Font: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Main Style -->
+    <link rel="stylesheet" href="style.css">
+    <!-- D3.js for Data Viz -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+
+<body>
+
+    <div class="dashboard">
+        <!-- Sidebar: UI Controls -->
+        <aside class="sidebar glass-panel">
+            <header class="logo-area">
+                <div class="glow-dot"></div>
+                <h1>Lupa Pública</h1>
+                <p class="subtitle">Auditoría Ciudadana en Tiempo Real</p>
+            </header>
+
+            <section class="controls">
+                <div class="input-group">
+                    <label for="dept-select">Seleccionar Departamento</label>
+                    <select id="dept-select" class="glass-select">
+                        <option value="Bogotá D.C.">Bogotá D.C.</option>
+                        <option value="Antioquia">Antioquia</option>
+                        <option value="Valle del Cauca">Valle del Cauca</option>
+                        <option value="Atlántico">Atlántico</option>
+                        <option value="Santander">Santander</option>
+                        <option value="Cundinamarca">Cundinamarca</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="year-select">Año de Firma</label>
+                    <select id="year-select" class="glass-select">
+                        <option value="2024">2024</option>
+                        <option value="2023" selected>2023</option>
+                        <option value="2022">2022</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="grouping-axis">Eje de Agrupación (V4)</label>
+                    <select id="grouping-axis" class="glass-select">
+                        <option value="none" selected>Ninguno (Contratos Individuales)</option>
+                        <option value="entidad">Agrupar por Entidad Pública</option>
+                        <option value="sector">Agrupar por Sector</option>
+                        <option value="contratista">Agrupar por Contratista (Módulo Anti-Carteles)</option>
+                        <option value="modalidad">Agrupar por Modalidad (Lic. vs Directa)</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="limit-slider">Top Contratos a Analizar: <span id="limit-label"
+                            class="text-neon">150</span></label>
+                    <input type="range" id="limit-slider" min="10" max="2000" step="10" value="150" class="neon-slider">
+                    <small id="slider-warning" class="text-muted"
+                        style="display:none; font-size: 0.7rem; color: #fcd34d; margin-top: 5px;">⚠️ Alto uso de CPU por
+                        encima de 1000.</small>
+                </div>
+
+                <button id="fetch-btn" class="neon-btn">
+                    <span>Analizar Datos</span>
+                    <div class="loader-spinner" id="btn-loader" style="display: none;"></div>
+                </button>
+
+                <button id="export-csv-btn" class="neon-btn secondary-btn" style="display: none;">
+                    <span>⬇ Exportar CSV</span>
+                </button>
+            </section> <!-- Close controls section -->
+
+            <section class="legend-area">
+                <h4>Guía Visual</h4>
+                <div class="legend-item">
+                    <span class="legend-circle normal"></span>
+                    <span>Tamanho: Monto del Contrato</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-circle monopoly"></span>
+                    <span>Amarillo: Múltiples Contratos (Riesgo Concentración)</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-circle delay"></span>
+                    <span>Rojo: Retraso Crítico (>30 días extra)</span>
+                </div>
+            </section>
+
+            <section class="metrics">
+                <div class="metric-card">
+                    <h3>Contratos Analizados</h3>
+                    <div class="odometer" id="count-metric">0</div>
+                </div>
+                <div class="metric-card highlight">
+                    <h3>Presupuesto Total Estimado</h3>
+                    <div class="odometer text-neon" id="total-metric">$0</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Inversión Per Cápita (Aprox)</h3>
+                    <div class="odometer text-neon" id="per-capita-metric" style="color: var(--neon-cyan)">$0
+                    </div>
+                </div>
+            </section>
+
+            <footer class="sidebar-footer">
+                <small>Datos provistos por Datos Abiertos Colombia (SECOP II).</small>
+            </footer>
+        </aside>
+
+        <!-- Main Content: Data Vis -->
+        <main class="chart-container" id="chart-area">
+
+            <button id="btn-zoom-out" class="neon-btn"
+                style="position: absolute; top: 20px; right: 20px; display: none; z-index: 20;">
+                ⬅️ Volver a Vista Macro
+            </button>
+
+            <div id="initial-state" class="state-message">
+                <p>Haz clic en "Analizar Datos" para visualizar los contratos públicos de más alto valor.</p>
+                <div class="hero-graphic"></div>
+            </div>
+            <!-- D3.js will mount the SVG graphic here -->
+            <svg id="viz-canvas" width="100%" height="100%"></svg>
+        </main>
+    </div>
+
+    <div id="tooltip" class="glass-tooltip" style="opacity: 0;">
+        <h4 id="tt-titulo">Título del Contrato</h4>
+        <div class="tt-row"><span class="tt-label">Entidad:</span> <span id="tt-entidad"></span></div>
+        <div class="tt-row"><span class="tt-label">Contratista:</span> <span id="tt-contratista"></span></div>
+        <div class="tt-row"><span class="tt-label">Sector:</span> <span id="tt-sector"></span></div>
+        <div class="tt-row"><span class="tt-label">Valor:</span> <span id="tt-valor" class="tt-bold text-neon"></span>
+        </div>
+        <div class="tt-row"><span class="tt-label">Objeto:</span>
+            <p id="tt-objeto" class="tt-desc"></p>
+        </div>
+        <button id="tt-open-panel-btn" class="neon-btn tt-action-btn">
+            🔍 Ver Detalles y Enlace SECOP
+        </button>
+    </div>
+
+    <!-- Details Panel (Slide up/left) -->
+    <aside id="details-panel" class="details-panel glass-panel closed">
+        <button id="close-details" class="close-btn">&times;</button>
+        <div class="panel-content">
+            <h2 id="dp-id">ID del Contrato</h2>
+            <h3 id="dp-entidad" class="text-neon">Entidad</h3>
+
+            <div class="dp-section">
+                <h4>Detalles del Contratista</h4>
+                <p id="dp-contratista"></p>
+                <div id="dp-monopoly-alert" class="alert-box warning" style="display: none;">
+                    <strong>⚠️ Alerta de Concentración:</strong>
+                    <span id="dp-monopoly-text"></span>
+                </div>
+            </div>
+
+            <div class="dp-section">
+                <h4>Objeto del Contrato</h4>
+                <p id="dp-objeto" class="long-text"></p>
+            </div>
+
+            <div class="dp-grid">
+                <div class="dp-metric">
+                    <span>Estado</span>
+                    <strong id="dp-estado"></strong>
+                </div>
+                <div class="dp-metric">
+                    <span>Modalidad</span>
+                    <strong id="dp-modalidad"></strong>
+                </div>
+                <div class="dp-metric">
+                    <span>Valor Original</span>
+                    <strong id="dp-valor" class="text-neon"></strong>
+                </div>
+                <div class="dp-metric">
+                    <span>Fecha Firma</span>
+                    <strong id="dp-fecha"></strong>
+                </div>
+                <div class="dp-metric">
+                    <span>Días Adicionados</span>
+                    <strong id="dp-retrasos"></strong>
+                </div>
+            </div>
+
+            <div id="dp-red-flag" class="alert-box danger" style="display: none;">
+                <strong>🚩 Bandera Roja:</strong> Este contrato presenta retrasos severos (>30 días adicionados).
+            </div>
+
+            <a id="dp-secop-link" href="#" target="_blank" class="neon-btn link-btn">
+                Míralo en SECOP Oficial ↗
+            </a>
+        </div>
+    </aside>
+
+    <!-- Scripts -->
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
